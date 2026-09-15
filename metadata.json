@@ -1,0 +1,6 @@
+{
+  "name": "Frysaide - Atacado para Lojistas",
+  "description": "Landing page comercial da marca mineira de moda feminina Frysaide voltada para captação de lojistas, multimarcas e boutiques.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
