@@ -1,28 +1,23 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
 
-interface NavbarProps {
-  onCtaClick: () => void;
-}
-
-export const Navbar: React.FC<NavbarProps> = ({ onCtaClick }) => {
+export const Navbar = ({ onCtaClick }: { onCtaClick: () => void }) => {
+  const [onHero, setOnHero] = useState(true);
+  useEffect(() => {
+    const hero = document.getElementById('hero-section');
+    if (!hero) return;
+    const observer = new IntersectionObserver(([entry]) => setOnHero(entry.isIntersecting), {
+      rootMargin: '-80px 0px 0px 0px', threshold: 0
+    });
+    observer.observe(hero);
+    return () => observer.disconnect();
+  }, []);
   return (
-    <header id="navbar-header" className="sticky top-0 z-50 bg-[#fbfbf9]/95 backdrop-blur-sm border-b border-stone-200/80">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-18 flex items-center justify-between">
-        <a 
-          href="#" 
-          id="navbar-logo"
-          className="tracking-[0.2em] uppercase font-semibold text-xl text-stone-900 font-brand-serif"
-        >
-          FRYSAIDE
+    <header id="navbar-header" data-on-hero={onHero} className={`fixed inset-x-0 top-0 z-50 border-b transition-colors duration-300 ${onHero ? 'bg-transparent border-transparent' : 'bg-white/95 backdrop-blur-sm border-neutral-200/80'}`}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-10 h-20 flex items-center justify-between gap-3">
+        <a href="#hero-section" id="navbar-logo" aria-label="Frysaide, início" className={`shrink-0 flex items-center ${onHero ? 'text-white' : 'text-black'}`}>
+          <img src="/images/logo-frysaide.png" alt="Frysaide" width="1080" height="391" className={`w-28 sm:w-44 h-auto object-contain ${onHero ? 'brightness-0 invert' : ''}`} />
         </a>
-        <button
-          id="navbar-cta-btn"
-          onClick={onCtaClick}
-          type="button"
-          className="bg-stone-900 hover:bg-stone-800 text-stone-50 text-sm font-medium px-5 py-2.5 rounded-sm transition-colors duration-200"
-        >
-          Quero revender Frysaide
-        </button>
+        <button id="navbar-cta-btn" onClick={onCtaClick} type="button" className={`cta text-[10px] sm:text-sm px-3 sm:px-6 ${onHero ? 'bg-white text-black hover:bg-neutral-100' : 'bg-black text-white hover:bg-neutral-800'}`}>QUERO SER LOJISTA PARCEIRO</button>
       </div>
     </header>
   );

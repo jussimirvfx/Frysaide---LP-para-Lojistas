@@ -4,10 +4,13 @@ export interface LeadFormData {
   whatsapp: string;
   email: string;
   cnpj: string;
-  cidadeEstado: string;
-  marcasVendidas: string;
+  cidade: string;
+  estado: string;
   instagramLoja: string;
-  comoConheceu: string;
+  marcasVendidas: string;
+  tipoLoja: string;
+  lojaFisica: string;
+  tempoCnpj: string;
 }
 
 export interface FaqItem {
