@@ -21,3 +21,7 @@ export function isValidCnpj(value: string): boolean {
   const second = checkDigit(digits.slice(0, 12) + first, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
   return digits.endsWith(`${first}${second}`);
 }
+
+export function getCnpjFieldError(value: string): string {
+  return cnpjDigits(value).length > 0 && !isValidCnpj(value) ? CNPJ_ERROR : '';
+}

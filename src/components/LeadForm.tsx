@@ -1,5 +1,6 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react';
-import { CNPJ_ERROR, cnpjDigits, formatCnpj, isValidCnpj } from '../lib/cnpj';
+import { useState, type ChangeEvent, type FocusEvent, type FormEvent } from 'react';
+import { CNPJ_ERROR, cnpjDigits, formatCnpj, getCnpjFieldError, isValidCnpj } from '../lib/cnpj';
+import { TIPO_LOJA_OPTIONS } from '../lib/formOptions';
 import { sendLead } from '../lib/sendLead';
 import type { LeadFormData } from '../types';
 
@@ -16,8 +17,8 @@ const fields: { name: keyof LeadFormData; label: string; type?: string; autoComp
 ];
 const states = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 
-const qualificationFields: { name: keyof LeadFormData; label: string; options: string[] }[] = [
-  { name: 'tipoLoja', label: 'Tipo de loja', options: ['Multimarcas / Boutique', 'Loja de shopping', 'Loja online', 'Magazine', 'Revendedor autônomo'] },
+const qualificationFields: { name: keyof LeadFormData; label: string; options: readonly string[] }[] = [
+  { name: 'tipoLoja', label: 'Tipo de loja', options: TIPO_LOJA_OPTIONS },
   { name: 'lojaFisica', label: 'Possui loja física?', options: ['Sim', 'Não'] },
   { name: 'tempoCnpj', label: 'Tempo de CNPJ', options: ['Menos de 1 ano', '1 a 3 anos', '3 a 5 anos', 'Mais de 5 anos'] }
 ];
@@ -35,6 +36,10 @@ export const LeadForm = () => {
     }
     setFormData(previous => ({ ...previous, [name]: normalized }));
   };
+  const handleBlur = (event: FocusEvent<HTMLInputElement>) => {
+    if (event.target.name !== 'cnpj') return;
+    setCnpjError(getCnpjFieldError(event.target.value));
+  };
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!isValidCnpj(formData.cnpj)) {
@@ -43,16 +48,10 @@ export const LeadForm = () => {
       return;
     }
     setCnpjError('');
-    const endpoint = import.meta.env.VITE_LEAD_FORM_ENDPOINT;
-    if (!endpoint) {
-      setError('O envio está temporariamente indisponível. Tente novamente mais tarde.');
-      setStatus('error');
-      return;
-    }
     setStatus('sending');
     setError('');
     try {
-      await sendLead(formData, endpoint);
+      await sendLead(formData, '/api/leads');
       setStatus('success');
     } catch {
       setError('Não foi possível enviar seus dados. Por favor, tente novamente.');
@@ -87,7 +86,7 @@ export const LeadForm = () => {
                       {states.map(state => <option key={state} value={state}>{state}</option>)}
                     </select>
                   ) : (
-                    <input id={field.name} name={field.name} type={field.type || 'text'} required={!field.optional} inputMode={field.name === 'cnpj' ? 'numeric' : undefined} maxLength={field.name === 'cnpj' ? 18 : undefined} aria-invalid={field.name === 'cnpj' ? Boolean(cnpjError) : undefined} aria-describedby={field.name === 'cnpj' && cnpjError ? 'cnpj-error' : undefined} onInvalid={field.name === 'cnpj' ? () => setCnpjError(CNPJ_ERROR) : undefined} autoComplete={field.autoComplete} placeholder={field.placeholder} value={formData[field.name]} onChange={handleChange} className="form-field bg-white/65 border-black/20" />
+                    <input id={field.name} name={field.name} type={field.type || 'text'} required={!field.optional} inputMode={field.name === 'cnpj' ? 'numeric' : undefined} maxLength={field.name === 'cnpj' ? 18 : undefined} aria-invalid={field.name === 'cnpj' ? Boolean(cnpjError) : undefined} aria-describedby={field.name === 'cnpj' && cnpjError ? 'cnpj-error' : undefined} onInvalid={field.name === 'cnpj' ? () => setCnpjError(CNPJ_ERROR) : undefined} onBlur={field.name === 'cnpj' ? handleBlur : undefined} autoComplete={field.autoComplete} placeholder={field.placeholder} value={formData[field.name]} onChange={handleChange} className="form-field bg-white/65 border-black/20" />
                   )}
                   {field.name === 'cnpj' && cnpjError && <p id="cnpj-error" role="alert" className="text-sm mt-2">{cnpjError}</p>}
                 </div>
