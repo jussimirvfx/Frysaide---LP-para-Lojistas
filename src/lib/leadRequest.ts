@@ -1,6 +1,6 @@
-import type { LeadFormData } from '../types';
-import { CNPJ_ERROR, cnpjDigits, formatCnpj, isValidCnpj } from './cnpj';
-import { TIPO_LOJA_OPTIONS } from './formOptions';
+import type { LeadFormData } from '../types.js';
+import { CNPJ_ERROR, cnpjDigits, formatCnpj, isValidCnpj } from './cnpj.js';
+import { TIPO_LOJA_OPTIONS } from './formOptions.js';
 
 const requiredFields: (keyof LeadFormData)[] = [
   'nome',

@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { LeadFormData } from '../src/types';
-import { buildLeadWebhookPayload } from '../src/lib/leadRequest';
+import type { LeadFormData } from '../src/types.js';
+import { buildLeadWebhookPayload } from '../src/lib/leadRequest.js';
 
 type VercelRequest = IncomingMessage & { body?: LeadFormData };
 type VercelResponse = ServerResponse & {
