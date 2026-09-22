@@ -3,6 +3,7 @@ import type { Plugin } from 'vite';
 import type { LeadFormData } from '../types';
 import { buildLeadWebhookPayload, normalizeSubmittedLead } from './leadRequest';
 import { buildFormLogEntry, leadScoreSummary } from './formLog';
+import { handleMetaConversion } from './metaConversions';
 
 async function readJson(request: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -26,6 +27,17 @@ export function localLeadPreview(): Plugin {
     name: 'local-lead-preview',
     apply: 'serve',
     configureServer(server) {
+      server.middlewares.use('/api/meta/conversions', async (request, response) => {
+        if (request.method !== 'POST') return respond(response, 405, { error: 'Método não permitido.' });
+        try {
+          const body = await readJson(request);
+          // Hard safety boundary: localhost never forwards events, regardless of env/body.
+          const result = await handleMetaConversion(body, request.headers, { forceDryRun: true });
+          respond(response, result.status, result.body);
+        } catch {
+          respond(response, 400, { error: 'JSON inválido ou muito grande.' });
+        }
+      });
       server.middlewares.use('/api/form-log', async (request, response) => {
         if (request.method !== 'POST') return respond(response, 405, { error: 'Método não permitido.' });
         try {

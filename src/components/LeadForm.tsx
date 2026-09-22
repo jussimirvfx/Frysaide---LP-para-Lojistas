@@ -4,6 +4,8 @@ import { LOJA_FISICA_OPTIONS, TEMPO_CNPJ_OPTIONS, TIPO_LOJA_OPTIONS } from '../l
 import { formatTelefone, validarEmail, validarTelefoneCompleto } from '../lib/leadScoring';
 import { sendLead } from '../lib/sendLead';
 import type { LeadFormData } from '../types';
+import { useMetaPixel } from 'scoretrack';
+import { trackValidatedLead } from '../lib/metaTracking';
 
 const initialFormData: LeadFormData = { nome: '', nomeLoja: '', telefone: '', email: '', cidade: '', estado: '', cnpj: '', instagramLoja: '', marcasVendidas: '', tipoLoja: '', lojaFisica: '', tempoCnpj: '' };
 const fields: { name: keyof LeadFormData; label: string; type?: string; autoComplete?: string; placeholder?: string; optional?: boolean }[] = [
@@ -26,6 +28,7 @@ const qualificationFields: { name: keyof LeadFormData; label: string; options: r
 ];
 
 export const LeadForm = () => {
+  const { trackLead, trackLeadQualificado } = useMetaPixel();
   const [formData, setFormData] = useState(initialFormData);
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [error, setError] = useState('');
@@ -77,6 +80,7 @@ export const LeadForm = () => {
     try {
       await sendLead(formData, '/api/leads');
       setStatus('success');
+      void trackValidatedLead(formData, trackLead, trackLeadQualificado);
     } catch {
       setError('Não foi possível enviar seus dados. Por favor, tente novamente.');
       setStatus('error');

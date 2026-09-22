@@ -1,0 +1,102 @@
+diff --git a/node_modules/scoretrack/dist/index.js b/node_modules/scoretrack/dist/index.js
+index 966439c..6011316 100644
+--- a/node_modules/scoretrack/dist/index.js
++++ b/node_modules/scoretrack/dist/index.js
+@@ -151,15 +151,12 @@ let META_PIXEL_CONFIG = {
+   VERBOSE: false
+ };
+ function isMetaPixelConfigured() {
+-  return isConfigured && !!META_PIXEL_CONFIG.PIXEL_ID && !!META_PIXEL_CONFIG.ACCESS_TOKEN;
++  return isConfigured && !!META_PIXEL_CONFIG.PIXEL_ID;
+ }
+ function validateConfiguration() {
+   if (!META_PIXEL_CONFIG.PIXEL_ID) {
+     throw new Error("PIXEL_ID é obrigatório. Configure usando configureMetaPixel()");
+   }
+-  if (!META_PIXEL_CONFIG.ACCESS_TOKEN) {
+-    throw new Error("ACCESS_TOKEN é obrigatório. Configure usando configureMetaPixel()");
+-  }
+ }
+ function configureMetaPixel(config) {
+   META_PIXEL_CONFIG = __spreadValues(__spreadValues({}, META_PIXEL_CONFIG), config);
+@@ -172,9 +169,6 @@ function configureMetaPixel(config) {
+   if (!config.PIXEL_ID) {
+     console.error("⚠️ PIXEL_ID não fornecido na configuração");
+   }
+-  if (!config.ACCESS_TOKEN) {
+-    console.error("⚠️ ACCESS_TOKEN não fornecido na configuração");
+-  }
+   if (META_PIXEL_CONFIG.VERBOSE) {
+     console.log("[META PIXEL CONFIGURADO]", {
+       PIXEL_ID: META_PIXEL_CONFIG.PIXEL_ID ? "Configurado" : "Não configurado",
+@@ -333,6 +327,7 @@ function loadFacebookPixelScript() {
+   document.head.appendChild(script);
+ }
+ function initFacebookPixel() {
++  if (META_PIXEL_CONFIG.LOCAL_DRY_RUN) return;
+   if (typeof window === "undefined")
+     return;
+   if (isInitialized || window._fbPixelInitialized) {
+@@ -1602,6 +1597,7 @@ function markEventAsSent(eventName, eventId) {
+ }
+ function sendPixelEvent(event) {
+   return __async(this, null, function* () {
++    if (META_PIXEL_CONFIG.LOCAL_DRY_RUN) return false;
+     if (typeof window === "undefined" || !window.fbq)
+       return false;
+     try {
+@@ -1640,14 +1636,18 @@ function sendConversionAPI(event) {
+       try {
+         const response = yield fetch(`${apiUrl}/api/meta/conversions`, {
+           method: "POST",
++          signal: AbortSignal.timeout(8000),
+           headers: {
+-            "Content-Type": "application/json"
++            "Content-Type": "application/json",
++            ...(META_PIXEL_CONFIG.LOCAL_DRY_RUN ? { "X-VFX-Dry-Run": "true" } : {})
+           },
+           body: JSON.stringify(payload)
+         });
+         if (response.ok) {
+           const result = yield response.json();
+-          logger.conversionApiEvent(event.event_name, event.event_id || "unknown", true);
++          if (result.dry_run) console.info("LOCAL_META_DRY_RUN", JSON.stringify({ event_name: event.event_name, event_id: event.event_id, custom_data: event.custom_data, skipped_meta: true }));
++          else if (result.meta_sent) logger.conversionApiEvent(event.event_name, event.event_id || "unknown", true);
++          else logger.warn(LogCategory.CONVERSION_API, "Evento recebido pelo servidor, mas não entregue à Meta", { event_name: event.event_name, event_id: event.event_id });
+           if (result.clientIP) {
+             logger.info(LogCategory.CONVERSION_API, `IP capturado: ${result.clientIP}`, {
+               event: event.event_name,
+@@ -1665,7 +1665,8 @@ function sendConversionAPI(event) {
+       } catch (apiRouteError) {
+         logger.warn(LogCategory.CONVERSION_API, `API route não disponível, tentando Meta API direta: ${event.event_name}`, { error: apiRouteError });
+       }
+-      return yield sendDirectToMetaAPI(event);
++      // Security: never fall back to a browser-to-Meta request with credentials.
++      return false;
+     } catch (error) {
+       logger.error(LogCategory.CONVERSION_API, `Erro ao enviar para API: ${event.event_name}`, { error });
+       return false;
+@@ -1777,7 +1778,7 @@ function useMetaPixel() {
+         return;
+       }
+       const enhancedParams = addUniversalParameters(params);
+-      const userData = options.user_data || prepareUserData(params);
++      const userData = options.user_data || (yield prepareUserData(params));
+       const event = {
+         event_name: eventName,
+         event_id: eventId,
+@@ -2066,12 +2067,9 @@ function useScrollTracking(userData) {
+ }
+ function MetaPixel({ pixelId }) {
+   const { isInitialized: isInitialized2, trackPageView } = useMetaPixel();
+-  useEffect(() => {
+-    if (isInitialized2) {
+-      trackPageView();
+-    }
+-  }, [isInitialized2, trackPageView]);
++  // The provider owns PageView; a second dispatch would have a different event ID.
+   useScrollTracking();
++  if (META_PIXEL_CONFIG.LOCAL_DRY_RUN) return null;
+   return /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx("noscript", { children: /* @__PURE__ */ jsx(
+     "img",
+     {
