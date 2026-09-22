@@ -1,8 +1,16 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { LeadFormData } from '../src/types.js';
-import { buildLeadWebhookPayload } from '../src/lib/leadRequest.js';
+import { buildLeadWebhookPayload, normalizeSubmittedLead } from '../src/lib/leadRequest.js';
 
-type VercelRequest = IncomingMessage & { body?: LeadFormData };
+type VercelRequest = IncomingMessage & { body?: LeadFormData & {
+  timestamp?: string;
+  page_url?: string;
+  user_agent?: string;
+  referrer?: string;
+  tipoLoja_value?: string;
+  lojaFisica_value?: string;
+  tempoCnpj_value?: string;
+} };
 type VercelResponse = ServerResponse & {
   status: (statusCode: number) => VercelResponse;
   json: (body: unknown) => void;
@@ -18,11 +26,24 @@ export default async function handler(request: VercelRequest, response: VercelRe
   if (!webhookUrl) return response.status(503).json({ error: 'Integração temporariamente indisponível.' });
 
   try {
-    const sourceUrl = String(request.headers.referer || request.headers.origin || '');
-    const payload = buildLeadWebhookPayload(request.body as LeadFormData, new Date().toISOString(), sourceUrl);
+    const body = request.body as VercelRequest['body'];
+    const sourceUrl = String(body?.page_url || request.headers.referer || request.headers.origin || '');
+    const formData = body ? normalizeSubmittedLead(body) : body;
+    const payload = buildLeadWebhookPayload(
+      formData as LeadFormData,
+      body?.timestamp || new Date().toISOString(),
+      sourceUrl,
+      body?.user_agent || String(request.headers['user-agent'] || ''),
+      body?.referrer || 'direct'
+    );
+    const webhookToken = process.env.N8N_FRYSAIDE_WEBHOOK_TOKEN;
     const webhookResponse = await fetch(webhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(webhookToken ? { Authorization: `Bearer ${webhookToken}` } : {})
+      },
       body: JSON.stringify(payload)
     });
 
@@ -30,7 +51,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
     return response.status(200).json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Falha ao processar o envio.';
-    const validationError = message.includes('inválido') || message.startsWith('Campo obrigatório');
+    const validationError = message.includes('inválid')
+      || message.startsWith('Campo obrigatório')
+      || ['Telefone ', 'Celular ', 'DDD ', 'E-mail ', 'Resposta ', 'Tempo de CNPJ '].some(prefix => message.startsWith(prefix));
     return response.status(validationError ? 400 : 502).json({ error: validationError ? message : 'Não foi possível enviar seus dados.' });
   }
 }

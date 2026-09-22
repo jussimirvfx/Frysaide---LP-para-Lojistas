@@ -1,7 +1,7 @@
 export interface LeadFormData {
   nome: string;
   nomeLoja: string;
-  whatsapp: string;
+  telefone: string;
   email: string;
   cnpj: string;
   cidade: string;
@@ -11,6 +11,15 @@ export interface LeadFormData {
   tipoLoja: string;
   lojaFisica: string;
   tempoCnpj: string;
+}
+
+export type LeadPriority = 'high' | 'medium' | 'low' | 'disqualified';
+
+export interface LeadSubmissionContext {
+  timestamp: string;
+  pageUrl: string;
+  userAgent: string;
+  referrer: string;
 }
 
 export interface FaqItem {

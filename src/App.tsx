@@ -9,11 +9,12 @@ import { PartnershipSteps } from './components/PartnershipSteps';
 import { FaqSection } from './components/FaqSection';
 import { LeadForm } from './components/LeadForm';
 import { Footer } from './components/Footer';
+import WhatsAppFloatingButtonScroll from './components/WhatsAppFloatingButtonScroll';
 
 export default function App() {
   const motionRef = usePageMotion();
   const scrollToForm = () => {
-    const formElement = document.getElementById('formulario-contato');
+    const formElement = document.getElementById('cta-form');
     if (formElement) {
       formElement.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     }
@@ -50,6 +51,7 @@ export default function App() {
       </main>
 
       <Footer />
+      <WhatsAppFloatingButtonScroll formId="cta-form" brandName="Frysaide" />
     </div>
   );
 }

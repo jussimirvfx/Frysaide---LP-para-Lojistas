@@ -5,7 +5,7 @@ const revealSelectors = [
   '#authority-numbers-section h2', '#authority-numbers-section .grid > div',
   '#about-section > div:last-child', '#benefits-section h2', '#benefits-section li',
   '#partnership-steps h2', '#partnership-steps li', '#faq-section h2',
-  '#faq-section .space-y-4 > div', '#formulario-contato .backdrop-blur-xl',
+  '#faq-section .space-y-4 > div', '#cta-form .backdrop-blur-xl',
   '#footer-section img', '#footer-section p', '[data-motion-photo]'
 ].join(',');
 
