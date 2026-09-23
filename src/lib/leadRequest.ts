@@ -7,13 +7,10 @@ const requiredFields: (keyof LeadFormData)[] = [
   'nomeLoja',
   'telefone',
   'email',
-  'cidade',
-  'estado',
   'cnpj',
   'instagramLoja',
   'tipoLoja',
-  'lojaFisica',
-  'tempoCnpj'
+  'lojaFisica'
 ];
 
 export function buildLeadWebhookPayload(
@@ -35,7 +32,7 @@ export function buildLeadWebhookPayload(
 
   if (!isValidQualificationOption(0, input.tipoLoja)) throw new Error('Tipo de loja inválido.');
   if (!isValidQualificationOption(1, input.lojaFisica)) throw new Error('Resposta sobre loja física inválida.');
-  if (!isValidQualificationOption(2, input.tempoCnpj)) throw new Error('Tempo de CNPJ inválido.');
+  if (input.tempoCnpj && !isValidQualificationOption(2, input.tempoCnpj)) throw new Error('Tempo de CNPJ inválido.');
 
   const qualification = calculateLeadQualification(input);
   const storeType = qualificationOptionFor(0, input.tipoLoja);
@@ -52,7 +49,7 @@ export function buildLeadWebhookPayload(
     tipoLoja_value: input.tipoLoja,
     lojaFisica: physicalStore?.label,
     lojaFisica_value: input.lojaFisica,
-    tempoCnpj: cnpjAge?.label,
+    tempoCnpj: cnpjAge?.label ?? '',
     tempoCnpj_value: input.tempoCnpj,
     cnpj: formatCnpj(input.cnpj),
     cnpj_digits: cnpjDigits(input.cnpj),

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import formLogHandler from '../../api/form-log';
+import leadHandler from '../../api/leads.js';
 import { CNPJ_ERROR, cnpjDigits, formatCnpj, getCnpjFieldError, isValidCnpj } from './cnpj';
 import { calcularIdadeCnpj, CNPJ_LOOKUP_ERROR, fetchCnpjEnrichment, normalizeCnpjApiData, tempoCnpjValueFromYears } from './cnpjLookup';
 import { buildFormLogEntry, leadScoreSummary } from './formLog';
@@ -215,6 +216,52 @@ test('builds a Meta-compatible webhook payload without dropping form fields', ()
   assert.equal(payload.value, payload.lead_score);
   assert.equal(payload.timestamp, context.timestamp);
   assert.equal(payload.page_url, context.pageUrl);
+});
+
+test('allows checksum-valid leads when optional CNPJ enrichment is unavailable', () => {
+  const payload = buildLeadWebhookPayload({ ...data, cidade: '', estado: '', tempoCnpj: '' }, context.timestamp, context.pageUrl);
+  assert.equal(payload.cnpj_validation_status, 'checksum_valid');
+  assert.equal(payload.cidade, '');
+  assert.equal(payload.estado, '');
+  assert.equal(payload.tempoCnpj, '');
+});
+
+test('lead endpoint delivers a checksum-valid lead when BrasilAPI is unavailable', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWebhook = process.env.N8N_FRYSAIDE_WEBHOOK_URL;
+  const originalWarn = console.warn;
+  let webhookPayload: Record<string, unknown> | null = null;
+  let statusCode = 0;
+  let responseBody: unknown;
+  process.env.N8N_FRYSAIDE_WEBHOOK_URL = 'https://n8n.example.test/webhook';
+  globalThis.fetch = async (url, init) => {
+    if (String(url).startsWith('https://brasilapi.com.br/')) return new Response('unavailable', { status: 503 });
+    webhookPayload = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response('{}', { status: 200 });
+  };
+  console.warn = () => undefined;
+  const response = {
+    status(code: number) { statusCode = code; return this; },
+    json(body: unknown) { responseBody = body; },
+    setHeader() { return this; }
+  };
+  try {
+    await leadHandler({ method: 'POST', body: { ...data, cidade: '', estado: '', tempoCnpj: '' }, headers: {} } as never, response as never);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+    if (originalWebhook === undefined) delete process.env.N8N_FRYSAIDE_WEBHOOK_URL;
+    else process.env.N8N_FRYSAIDE_WEBHOOK_URL = originalWebhook;
+  }
+  assert.equal(statusCode, 200);
+  assert.deepEqual(responseBody, {
+    success: true,
+    enrichment_available: false,
+    lead_score_summary: { lead_score: 74, lead_priority: 'high', disqualified: false }
+  });
+  assert.equal(webhookPayload?.cnpj_validation_status, 'checksum_valid');
+  assert.equal(webhookPayload?.cidade, '');
+  assert.equal(webhookPayload?.tempoCnpj, '');
 });
 
 test('server-side validation blocks invalid phone, email and qualification options', () => {

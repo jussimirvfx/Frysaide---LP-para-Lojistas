@@ -1,7 +1,6 @@
 import { useState, type ChangeEvent, type FocusEvent, type FormEvent } from 'react';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { CNPJ_ERROR, cnpjDigits, formatCnpj, getCnpjFieldError, isValidCnpj } from '../lib/cnpj';
-import { CNPJ_LOOKUP_ERROR, consultarCnpj } from '../lib/cnpjLookup';
 import { LOJA_FISICA_OPTIONS, TIPO_LOJA_OPTIONS } from '../lib/formOptions';
 import { formatTelefone, isLeadBlockedByCuration, logLeadScoreNoConsole, validarEmail, validarTelefoneCompleto } from '../lib/leadScoring';
 import { sendLead } from '../lib/sendLead';
@@ -80,21 +79,15 @@ export const LeadForm = () => {
     setStatus('sending');
     setError('');
     try {
-      const cnpjData = await consultarCnpj(formData.cnpj);
-      const enrichedFormData = {
-        ...formData,
-        cidade: cnpjData.cidade,
-        estado: cnpjData.estado,
-        tempoCnpj: cnpjData.tempoCnpj
-      };
-      logLeadScoreNoConsole(enrichedFormData);
-      await sendLead(enrichedFormData, '/api/leads');
+      const result = await sendLead(formData, '/api/leads');
       setStatus('success');
-      void trackValidatedLead(enrichedFormData, trackLead, trackLeadQualificado);
+      if (result?.enrichment_available && result.enrichment) {
+        const enrichedFormData = { ...formData, ...result.enrichment };
+        logLeadScoreNoConsole(enrichedFormData);
+        void trackValidatedLead(enrichedFormData, trackLead, trackLeadQualificado);
+      }
     } catch (submissionError) {
-      setError(submissionError instanceof Error && submissionError.message === CNPJ_LOOKUP_ERROR
-        ? CNPJ_LOOKUP_ERROR
-        : 'Não foi possível enviar seus dados. Por favor, tente novamente.');
+      setError('Não foi possível enviar seus dados. Por favor, tente novamente.');
       setStatus('error');
     }
   };

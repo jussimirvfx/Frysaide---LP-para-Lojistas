@@ -34,13 +34,22 @@ export default async function handler(request: VercelRequest, response: VercelRe
     if (submittedFormData && isLeadBlockedByCuration(submittedFormData)) {
       return response.status(422).json({ error: 'Cadastro não selecionado pela curadoria.' });
     }
-    const cnpjData = await fetchCnpjEnrichment(submittedFormData?.cnpj || '');
-    const formData = submittedFormData ? {
+    if (!submittedFormData) throw new Error('Payload inválido.');
+    let cnpjData: Awaited<ReturnType<typeof fetchCnpjEnrichment>> | null = null;
+    try {
+      cnpjData = await fetchCnpjEnrichment(submittedFormData.cnpj);
+    } catch {
+      // Cadastral enrichment is optional. A valid checksum must still reach n8n.
+      console.warn('CNPJ_ENRICHMENT_OPTIONAL_FAILED');
+    }
+    const formData = {
       ...submittedFormData,
-      cidade: cnpjData.cidade,
-      estado: cnpjData.estado,
-      tempoCnpj: cnpjData.tempoCnpj
-    } : submittedFormData;
+      ...(cnpjData ? {
+        cidade: cnpjData.cidade,
+        estado: cnpjData.estado,
+        tempoCnpj: cnpjData.tempoCnpj
+      } : {})
+    };
     const payload = buildLeadWebhookPayload(
       formData as LeadFormData,
       body?.timestamp || new Date().toISOString(),
@@ -60,7 +69,20 @@ export default async function handler(request: VercelRequest, response: VercelRe
     });
 
     if (!webhookResponse.ok) throw new Error(`Webhook rejected with status ${webhookResponse.status}`);
-    return response.status(200).json({ success: true });
+    return response.status(200).json({
+      success: true,
+      enrichment_available: Boolean(cnpjData),
+      ...(cnpjData ? { enrichment: {
+        cidade: cnpjData.cidade,
+        estado: cnpjData.estado,
+        tempoCnpj: cnpjData.tempoCnpj
+      } } : {}),
+      lead_score_summary: {
+        lead_score: payload.lead_score,
+        lead_priority: payload.lead_priority,
+        disqualified: payload.disqualified
+      }
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Falha ao processar o envio.';
     const validationError = message.includes('inválid')

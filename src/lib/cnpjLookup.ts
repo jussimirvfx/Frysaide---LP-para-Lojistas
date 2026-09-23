@@ -1,4 +1,4 @@
-import { CNPJ_ERROR, cnpjDigits, isValidCnpj } from './cnpj';
+import { CNPJ_ERROR, cnpjDigits, isValidCnpj } from './cnpj.js';
 
 export const CNPJ_LOOKUP_ERROR = 'Não foi possível consultar os dados do CNPJ. Confira o número e tente novamente.';
 

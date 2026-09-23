@@ -1,4 +1,4 @@
-import type { LeadFormData, LeadPriority } from '../types';
+import type { LeadFormData, LeadPriority } from '../types.js';
 
 export const DDDS_VALIDOS = [
   11, 12, 13, 14, 15, 16, 17, 18, 19,

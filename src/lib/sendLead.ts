@@ -1,6 +1,6 @@
-import type { LeadFormData, LeadSubmissionContext } from '../types';
-import { buildLeadWebhookPayload } from './leadRequest';
-import { isLeadBlockedByCuration } from './leadScoring';
+import type { LeadFormData, LeadSubmissionContext } from '../types.js';
+import { buildLeadWebhookPayload } from './leadRequest.js';
+import { isLeadBlockedByCuration } from './leadScoring.js';
 
 const defaultContext = (): LeadSubmissionContext => ({
   timestamp: new Date().toISOString(),
@@ -50,6 +50,12 @@ export async function sendLead(
     body: JSON.stringify(payload)
   });
   if (!response.ok) throw new Error('Submission failed');
-  const result = await response.clone().json().catch(() => null) as { dry_run?: boolean; lead_score_summary?: unknown } | null;
+  const result = await response.clone().json().catch(() => null) as {
+    dry_run?: boolean;
+    lead_score_summary?: unknown;
+    enrichment_available?: boolean;
+    enrichment?: Pick<LeadFormData, 'cidade' | 'estado' | 'tempoCnpj'>;
+  } | null;
   if (result?.dry_run) console.info('LOCAL_LEAD_SCORE', JSON.stringify(result.lead_score_summary));
+  return result;
 }

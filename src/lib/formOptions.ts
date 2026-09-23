@@ -1,4 +1,4 @@
-import { LEAD_SCORE_CONFIG } from './leadScoring';
+import { LEAD_SCORE_CONFIG } from './leadScoring.js';
 
 export const TIPO_LOJA_OPTIONS = LEAD_SCORE_CONFIG.questions[0].options;
 export const LOJA_FISICA_OPTIONS = LEAD_SCORE_CONFIG.questions[1].options;
