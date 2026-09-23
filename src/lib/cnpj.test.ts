@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import formLogHandler from '../../api/form-log';
 import { CNPJ_ERROR, cnpjDigits, formatCnpj, getCnpjFieldError, isValidCnpj } from './cnpj';
+import { calcularIdadeCnpj, CNPJ_LOOKUP_ERROR, fetchCnpjEnrichment, normalizeCnpjApiData, tempoCnpjValueFromYears } from './cnpjLookup';
 import { buildFormLogEntry, leadScoreSummary } from './formLog';
 import { LOJA_FISICA_OPTIONS, TEMPO_CNPJ_OPTIONS, TIPO_LOJA_OPTIONS } from './formOptions';
 import { buildLeadWebhookPayload } from './leadRequest';
-import { calculateLeadQualification, converterParaE164, formatTelefone, validarEmail, validarTelefoneCompleto } from './leadScoring';
+import { calculateLeadQualification, converterParaE164, formatTelefone, LEAD_SCORE_CONFIG, validarEmail, validarTelefoneCompleto } from './leadScoring';
 import { sendLead } from './sendLead';
 import type { LeadFormData, LeadSubmissionContext } from '../types';
 
@@ -73,6 +74,42 @@ test('valid submission awaits backup before webhook and reuses the complete payl
   assert.equal(webhookPayload.lead_score, 100);
 });
 
+test('gets hidden city, state and CNPJ age from a mocked CNPJ API response', async () => {
+  let requestedUrl = '';
+  const request: typeof fetch = async (url, init) => {
+    requestedUrl = String(url);
+    assert.equal((init?.headers as Record<string, string>)['User-Agent'], 'Frysaide-LP/1.0');
+    return new Response(JSON.stringify({ municipio: 'São Paulo', uf: 'sp', data_inicio_atividade: '2020-09-23' }));
+  };
+  const result = await fetchCnpjEnrichment('60.887.522/0001-89', request, new Date('2026-09-23T12:00:00Z'));
+  assert.equal(requestedUrl, 'https://brasilapi.com.br/api/cnpj/v1/60887522000189');
+  assert.deepEqual(result, {
+    cidade: 'São Paulo', estado: 'SP', dataInicioAtividade: '2020-09-23', idadeCnpjAnos: 6,
+    tempoCnpj: 'opcao-1790102115667-4', fonte: 'BrasilAPI (Minha Receita)'
+  });
+});
+
+test('classifies hidden CNPJ age without gaps and rejects invalid lookup data', () => {
+  const today = new Date('2026-09-23T12:00:00Z');
+  assert.equal(calcularIdadeCnpj('2025-09-24', today), 0);
+  assert.equal(calcularIdadeCnpj('2024-09-23', today), 2);
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map(tempoCnpjValueFromYears), [
+    'opcao-1790102115667-1', 'opcao-1790102115667-2', 'opcao-1790102115667-2',
+    'opcao-1790102115667-3', 'opcao-1790102115667-3', 'opcao-1790102115667-4'
+  ]);
+  assert.throws(() => normalizeCnpjApiData({ municipio: '', uf: 'SP', data_inicio_atividade: '2020-01-01' }, today), { message: CNPJ_LOOKUP_ERROR });
+  assert.throws(() => normalizeCnpjApiData({ municipio: 'São Paulo', uf: 'SP', data_inicio_atividade: '2099-01-01' }, today), { message: CNPJ_LOOKUP_ERROR });
+});
+
+test('invalid CNPJ blocks the external lookup request', async () => {
+  let calls = 0;
+  const request: typeof fetch = async () => { calls++; return new Response('{}'); };
+  for (const cnpj of ['60887522000188', '00000000000000', '608875220001']) {
+    await assert.rejects(fetchCnpjEnrichment(cnpj, request), { message: CNPJ_ERROR });
+  }
+  assert.equal(calls, 0);
+});
+
 test('backup failure is handled before preserving failed-webhook behavior', async () => {
   let calls = 0;
   const request: typeof fetch = async () => {
@@ -90,16 +127,43 @@ test('backup failure is handled before preserving failed-webhook behavior', asyn
 });
 
 test('uses the exact lead-score options and user-facing labels', () => {
-  assert.deepEqual(TIPO_LOJA_OPTIONS.map(option => option.label), ['Boutique', 'Multimarcas', 'Loja de Shopping', 'Magazine', 'Loja online', 'Revendedor(a) Autônomo(a)']);
+  assert.deepEqual(TIPO_LOJA_OPTIONS.map(option => option.label), ['Boutique', 'Multimarcas', 'Loja de shopping', 'Loja online', 'Revendedor(a) autônomo(a)', 'Magazine']);
   assert.deepEqual(LOJA_FISICA_OPTIONS.map(option => option.label), ['Sim', 'Não']);
-  assert.deepEqual(TEMPO_CNPJ_OPTIONS.map(option => option.label), ['Menos de 1 ano', 'De 1 a 2 anos', 'De 2 a 4 anos', 'Mais de 5 anos']);
+  assert.deepEqual(TEMPO_CNPJ_OPTIONS.map(option => option.label), ['Menos de 1 ano', 'De 1 a 2 anos', 'De 3 a 4 anos', 'Mais de 5 anos']);
+});
+
+test('matches every score and disqualification rule from the approved configuration', () => {
+  assert.deepEqual(LEAD_SCORE_CONFIG.questions.map(question => question.options.map(option => ({
+    label: option.label, points: option.points, disqualifies: option.disqualifies
+  }))), [
+    [
+      { label: 'Boutique', points: 40, disqualifies: false },
+      { label: 'Multimarcas', points: 40, disqualifies: false },
+      { label: 'Loja de shopping', points: 5, disqualifies: false },
+      { label: 'Loja online', points: 5, disqualifies: true },
+      { label: 'Revendedor(a) autônomo(a)', points: 1, disqualifies: true },
+      { label: 'Magazine', points: 5, disqualifies: true }
+    ],
+    [
+      { label: 'Sim', points: 34, disqualifies: false },
+      { label: 'Não', points: 5, disqualifies: true }
+    ],
+    [
+      { label: 'Menos de 1 ano', points: 10, disqualifies: true },
+      { label: 'De 1 a 2 anos', points: 15, disqualifies: false },
+      { label: 'De 3 a 4 anos', points: 20, disqualifies: false },
+      { label: 'Mais de 5 anos', points: 25, disqualifies: false }
+    ]
+  ]);
+  assert.equal(LEAD_SCORE_CONFIG.stateConfig.priorityStates.length, 27);
+  assert.equal(LEAD_SCORE_CONFIG.stateConfig.pointsForPriorityState, 1);
 });
 
 test('scores and disqualifies leads from the configured option values', () => {
   const scenarios = [
-    { label: 'bom', changes: {}, points: [39, 30, 30, 1], total: 100, priority: 'high', disqualified: false },
-    { label: 'intermediário', changes: { tipoLoja: 'opcao-storeType-4-2', tempoCnpj: 'opcao-1790102115667-2' }, points: [10, 30, 10, 1], total: 51, priority: 'medium', disqualified: false },
-    { label: 'ruim', changes: { tipoLoja: 'opcao-storeType-6', lojaFisica: 'no', tempoCnpj: 'opcao-1790102115667-1' }, points: [0, 0, 5, 1], total: 6, priority: 'disqualified', disqualified: true }
+    { label: 'bom', changes: {}, points: [40, 34, 25, 1], total: 100, priority: 'high', disqualified: false },
+    { label: 'intermediário', changes: { tipoLoja: 'opcao-storeType-3-2', tempoCnpj: 'opcao-1790102115667-2' }, points: [5, 34, 15, 1], total: 55, priority: 'medium', disqualified: false },
+    { label: 'ruim', changes: { tipoLoja: 'opcao-storeType-6', lojaFisica: 'no', tempoCnpj: 'opcao-1790102115667-1' }, points: [1, 5, 10, 1], total: 17, priority: 'disqualified', disqualified: true }
   ] as const;
   for (const scenario of scenarios) {
     const qualification = calculateLeadQualification({ ...data, ...scenario.changes });

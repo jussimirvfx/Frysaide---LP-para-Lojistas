@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { LeadFormData } from '../src/types.js';
+import { fetchCnpjEnrichment } from '../src/lib/cnpjLookup.js';
 import { buildLeadWebhookPayload, normalizeSubmittedLead } from '../src/lib/leadRequest.js';
 
 type VercelRequest = IncomingMessage & { body?: LeadFormData & {
@@ -28,7 +29,14 @@ export default async function handler(request: VercelRequest, response: VercelRe
   try {
     const body = request.body as VercelRequest['body'];
     const sourceUrl = String(body?.page_url || request.headers.referer || request.headers.origin || '');
-    const formData = body ? normalizeSubmittedLead(body) : body;
+    const submittedFormData = body ? normalizeSubmittedLead(body) : body;
+    const cnpjData = await fetchCnpjEnrichment(submittedFormData?.cnpj || '');
+    const formData = submittedFormData ? {
+      ...submittedFormData,
+      cidade: cnpjData.cidade,
+      estado: cnpjData.estado,
+      tempoCnpj: cnpjData.tempoCnpj
+    } : submittedFormData;
     const payload = buildLeadWebhookPayload(
       formData as LeadFormData,
       body?.timestamp || new Date().toISOString(),

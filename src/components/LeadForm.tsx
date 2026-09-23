@@ -1,7 +1,8 @@
 import { useState, type ChangeEvent, type FocusEvent, type FormEvent } from 'react';
 import { CNPJ_ERROR, cnpjDigits, formatCnpj, getCnpjFieldError, isValidCnpj } from '../lib/cnpj';
-import { LOJA_FISICA_OPTIONS, TEMPO_CNPJ_OPTIONS, TIPO_LOJA_OPTIONS } from '../lib/formOptions';
-import { formatTelefone, validarEmail, validarTelefoneCompleto } from '../lib/leadScoring';
+import { CNPJ_LOOKUP_ERROR, consultarCnpj } from '../lib/cnpjLookup';
+import { LOJA_FISICA_OPTIONS, TIPO_LOJA_OPTIONS } from '../lib/formOptions';
+import { formatTelefone, logLeadScoreNoConsole, validarEmail, validarTelefoneCompleto } from '../lib/leadScoring';
 import { sendLead } from '../lib/sendLead';
 import type { LeadFormData } from '../types';
 import { useMetaPixel } from 'scoretrack';
@@ -13,18 +14,13 @@ const fields: { name: keyof LeadFormData; label: string; type?: string; autoComp
   { name: 'nomeLoja', label: 'Nome da loja', autoComplete: 'organization' },
   { name: 'telefone', label: 'WhatsApp com DDD', type: 'tel', autoComplete: 'tel', placeholder: '(00) 00000-0000' },
   { name: 'email', label: 'E-mail', type: 'email', autoComplete: 'email' },
-  { name: 'cidade', label: 'Cidade', autoComplete: 'address-level2' },
-  { name: 'estado', label: 'Estado', autoComplete: 'address-level1' },
   { name: 'cnpj', label: 'CNPJ', placeholder: '00.000.000/0000-00' },
   { name: 'instagramLoja', label: 'Instagram da loja', placeholder: '@sualoja' }
 ];
-const states = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
-
 type QualificationOption = { readonly value: string; readonly label: string };
 const qualificationFields: { name: keyof LeadFormData; label: string; options: readonly QualificationOption[] }[] = [
   { name: 'tipoLoja', label: 'Qual o tipo da loja?', options: TIPO_LOJA_OPTIONS },
-  { name: 'lojaFisica', label: 'Possui loja física?', options: LOJA_FISICA_OPTIONS },
-  { name: 'tempoCnpj', label: 'Tempo de CNPJ', options: TEMPO_CNPJ_OPTIONS }
+  { name: 'lojaFisica', label: 'Possui loja física?', options: LOJA_FISICA_OPTIONS }
 ];
 
 export const LeadForm = () => {
@@ -78,11 +74,21 @@ export const LeadForm = () => {
     setStatus('sending');
     setError('');
     try {
-      await sendLead(formData, '/api/leads');
+      const cnpjData = await consultarCnpj(formData.cnpj);
+      const enrichedFormData = {
+        ...formData,
+        cidade: cnpjData.cidade,
+        estado: cnpjData.estado,
+        tempoCnpj: cnpjData.tempoCnpj
+      };
+      logLeadScoreNoConsole(enrichedFormData);
+      await sendLead(enrichedFormData, '/api/leads');
       setStatus('success');
-      void trackValidatedLead(formData, trackLead, trackLeadQualificado);
-    } catch {
-      setError('Não foi possível enviar seus dados. Por favor, tente novamente.');
+      void trackValidatedLead(enrichedFormData, trackLead, trackLeadQualificado);
+    } catch (submissionError) {
+      setError(submissionError instanceof Error && submissionError.message === CNPJ_LOOKUP_ERROR
+        ? CNPJ_LOOKUP_ERROR
+        : 'Não foi possível enviar seus dados. Por favor, tente novamente.');
       setStatus('error');
     }
   };
@@ -109,14 +115,7 @@ export const LeadForm = () => {
               {fields.map(field => (
                 <div key={field.name}>
                   <label htmlFor={field.name} className="block text-sm font-medium mb-2">{field.label}{field.optional ? '' : ' *'}</label>
-                  {field.name === 'estado' ? (
-                    <select id="estado" name="estado" required autoComplete={field.autoComplete} value={formData.estado} onChange={handleChange} className="form-field bg-white/65 border-black/20">
-                      <option value="">Selecione</option>
-                      {states.map(state => <option key={state} value={state}>{state}</option>)}
-                    </select>
-                  ) : (
-                    <input id={field.name} name={field.name} type={field.type || 'text'} required={!field.optional} inputMode={field.name === 'cnpj' || field.name === 'telefone' ? 'numeric' : undefined} maxLength={field.name === 'cnpj' ? 18 : field.name === 'telefone' ? 15 : undefined} aria-invalid={field.name === 'cnpj' ? Boolean(cnpjError) : field.name === 'telefone' ? Boolean(telefoneError) : field.name === 'email' ? Boolean(emailError) : undefined} aria-describedby={field.name === 'cnpj' && cnpjError ? 'cnpj-error' : field.name === 'telefone' && telefoneError ? 'telefone-error' : field.name === 'email' && emailError ? 'email-error' : undefined} onInvalid={field.name === 'cnpj' ? () => setCnpjError(CNPJ_ERROR) : undefined} onBlur={field.name === 'cnpj' ? handleBlur : field.name === 'telefone' ? handleTelefoneBlur : undefined} autoComplete={field.autoComplete} placeholder={field.placeholder} value={formData[field.name]} onChange={handleChange} className="form-field bg-white/65 border-black/20" />
-                  )}
+                  <input id={field.name} name={field.name} type={field.type || 'text'} required={!field.optional} inputMode={field.name === 'cnpj' || field.name === 'telefone' ? 'numeric' : undefined} maxLength={field.name === 'cnpj' ? 18 : field.name === 'telefone' ? 15 : undefined} aria-invalid={field.name === 'cnpj' ? Boolean(cnpjError) : field.name === 'telefone' ? Boolean(telefoneError) : field.name === 'email' ? Boolean(emailError) : undefined} aria-describedby={field.name === 'cnpj' && cnpjError ? 'cnpj-error' : field.name === 'telefone' && telefoneError ? 'telefone-error' : field.name === 'email' && emailError ? 'email-error' : undefined} onInvalid={field.name === 'cnpj' ? () => setCnpjError(CNPJ_ERROR) : undefined} onBlur={field.name === 'cnpj' ? handleBlur : field.name === 'telefone' ? handleTelefoneBlur : undefined} autoComplete={field.autoComplete} placeholder={field.placeholder} value={formData[field.name]} onChange={handleChange} className="form-field bg-white/65 border-black/20" />
                   {field.name === 'cnpj' && cnpjError && <p id="cnpj-error" role="alert" className="text-sm mt-2">{cnpjError}</p>}
                   {field.name === 'telefone' && telefoneError && <p id="telefone-error" role="alert" className="text-sm mt-2">{telefoneError}</p>}
                   {field.name === 'email' && emailError && <p id="email-error" role="alert" className="text-sm mt-2">{emailError}</p>}

@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import type { LeadFormData } from '../types';
+import { fetchCnpjEnrichment } from './cnpjLookup';
 import { buildLeadWebhookPayload, normalizeSubmittedLead } from './leadRequest';
 import { buildFormLogEntry, leadScoreSummary } from './formLog';
 import { handleMetaConversion } from './metaConversions';
@@ -27,6 +28,23 @@ export function localLeadPreview(): Plugin {
     name: 'local-lead-preview',
     apply: 'serve',
     configureServer(server) {
+      server.middlewares.use('/api/cnpj', async (request, response) => {
+        if (request.method !== 'GET') return respond(response, 405, { error: 'Método não permitido.' });
+        try {
+          const url = new URL(request.url || '', 'http://localhost');
+          const result = await fetchCnpjEnrichment(url.searchParams.get('cnpj') || '');
+          respond(response, 200, {
+            municipio: result.cidade,
+            uf: result.estado,
+            data_inicio_atividade: result.dataInicioAtividade,
+            idade_cnpj_anos: result.idadeCnpjAnos,
+            tempo_cnpj_value: result.tempoCnpj,
+            fonte: result.fonte
+          });
+        } catch (error) {
+          respond(response, 502, { error: error instanceof Error ? error.message : 'Falha ao consultar CNPJ.' });
+        }
+      });
       server.middlewares.use('/api/meta/conversions', async (request, response) => {
         if (request.method !== 'POST') return respond(response, 405, { error: 'Método não permitido.' });
         try {

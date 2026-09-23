@@ -15,8 +15,8 @@ const event = { event_name: 'Lead', event_id: 'test-lead-1', event_source_url: '
 test('good, intermediate and bad leads preserve score and choose correct Meta hooks', async () => {
   for (const [form, total, expected] of [
     [data, 100, ['Lead', 'LeadQualificado']],
-    [{ ...data, tipoLoja: 'opcao-storeType-4-2', tempoCnpj: 'opcao-1790102115667-2' }, 51, ['Lead']],
-    [{ ...data, tipoLoja: 'opcao-storeType-6', lojaFisica: 'no', tempoCnpj: 'opcao-1790102115667-1' }, 6, ['Lead']]
+    [{ ...data, tipoLoja: 'opcao-storeType-3-2', tempoCnpj: 'opcao-1790102115667-2' }, 55, ['Lead']],
+    [{ ...data, tipoLoja: 'opcao-storeType-6', lojaFisica: 'no', tempoCnpj: 'opcao-1790102115667-1' }, 17, ['Lead']]
   ] as const) {
     const calls: string[] = [];
     const lead = prepareMetaLead(form);

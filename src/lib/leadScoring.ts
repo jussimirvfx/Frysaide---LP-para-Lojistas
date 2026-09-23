@@ -24,28 +24,28 @@ export const LEAD_SCORE_CONFIG = {
     {
       id: 'storeType', question: 'Qual o tipo da loja?', type: 'single-choice', enabled: true, isDefault: true, disqualifyOnNo: false,
       options: [
-        { value: 'opcao-storeType-3', label: 'Boutique', points: 39, disqualifies: false },
-        { value: 'opcao-storeType-4', label: 'Multimarcas', points: 30, disqualifies: false },
-        { value: 'opcao-storeType-3-2', label: 'Loja de Shopping', points: 10, disqualifies: false },
-        { value: 'opcao-storeType-4-2', label: 'Magazine', points: 10, disqualifies: false },
-        { value: 'opcao-storeType-5', label: 'Loja online', points: 4, disqualifies: false },
-        { value: 'opcao-storeType-6', label: 'Revendedor(a) Autônomo(a)', points: 0, disqualifies: true }
+        { value: 'opcao-storeType-3', label: 'Boutique', points: 40, disqualifies: false },
+        { value: 'opcao-storeType-4', label: 'Multimarcas', points: 40, disqualifies: false },
+        { value: 'opcao-storeType-3-2', label: 'Loja de shopping', points: 5, disqualifies: false },
+        { value: 'opcao-storeType-5', label: 'Loja online', points: 5, disqualifies: true },
+        { value: 'opcao-storeType-6', label: 'Revendedor(a) autônomo(a)', points: 1, disqualifies: true },
+        { value: 'opcao-storeType-4-2', label: 'Magazine', points: 5, disqualifies: true }
       ]
     },
     {
       id: 'hasPhysicalStore', question: 'Possui loja física?', type: 'yes-no', enabled: true, isDefault: true, disqualifyOnNo: true,
       options: [
-        { value: 'yes', label: 'Sim', points: 30, disqualifies: false },
-        { value: 'no', label: 'Não', points: 0, disqualifies: true }
+        { value: 'yes', label: 'Sim', points: 34, disqualifies: false },
+        { value: 'no', label: 'Não', points: 5, disqualifies: true }
       ]
     },
     {
       id: 1790102115667, question: 'Tempo de CNPJ', type: 'single-choice', enabled: true, isDefault: false, disqualifyOnNo: false,
       options: [
-        { value: 'opcao-1790102115667-1', label: 'Menos de 1 ano', points: 5, disqualifies: false },
-        { value: 'opcao-1790102115667-2', label: 'De 1 a 2 anos', points: 10, disqualifies: false },
-        { value: 'opcao-1790102115667-3', label: 'De 2 a 4 anos', points: 10, disqualifies: false },
-        { value: 'opcao-1790102115667-4', label: 'Mais de 5 anos', points: 30, disqualifies: false }
+        { value: 'opcao-1790102115667-1', label: 'Menos de 1 ano', points: 10, disqualifies: true },
+        { value: 'opcao-1790102115667-2', label: 'De 1 a 2 anos', points: 15, disqualifies: false },
+        { value: 'opcao-1790102115667-3', label: 'De 3 a 4 anos', points: 20, disqualifies: false },
+        { value: 'opcao-1790102115667-4', label: 'Mais de 5 anos', points: 25, disqualifies: false }
       ]
     }
   ]
@@ -85,10 +85,10 @@ export function calculateLeadQualification(data: LeadFormData) {
     ? LEAD_SCORE_CONFIG.stateConfig.pointsForPriorityState
     : 0;
   const breakdown = {
-    tipoLoja: { label: storeType?.label ?? '', points: storeType?.points ?? 0 },
-    lojaFisica: { label: physicalStore?.label ?? '', points: physicalStore?.points ?? 0 },
-    tempoCnpj: { label: cnpjAge?.label ?? '', points: cnpjAge?.points ?? 0 },
-    estado: { label: data.estado, points: statePoints }
+    tipoLoja: { label: storeType?.label ?? '', points: storeType?.points ?? 0, source: 'formulario' },
+    lojaFisica: { label: physicalStore?.label ?? '', points: physicalStore?.points ?? 0, source: 'formulario' },
+    tempoCnpj: { label: cnpjAge?.label ?? '', points: cnpjAge?.points ?? 0, source: 'cnpj_api' },
+    estado: { label: data.estado, points: statePoints, source: 'cnpj_api' }
   };
   const rawTotal = Object.values(breakdown).reduce((sum, item) => sum + item.points, 0);
   const score = Math.min(100, rawTotal);
@@ -99,6 +99,23 @@ export function calculateLeadQualification(data: LeadFormData) {
   ].filter((reason): reason is string => Boolean(reason));
   const priority: LeadPriority = disqualificationReasons.length > 0 ? 'disqualified' : score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low';
   return { score, rawTotal, breakdown, priority, disqualified: disqualificationReasons.length > 0, disqualificationReasons };
+}
+
+export function logLeadScoreNoConsole(data: LeadFormData) {
+  const qualification = calculateLeadQualification(data);
+  console.group('Lead Score - Frysaide');
+  console.table([
+    { criterio: 'Estado', resposta: qualification.breakdown.estado.label, pontos: qualification.breakdown.estado.points, origem: 'API do CNPJ' },
+    { criterio: 'Qual o tipo da loja?', resposta: qualification.breakdown.tipoLoja.label, pontos: qualification.breakdown.tipoLoja.points, origem: 'Formulário' },
+    { criterio: 'Possui loja física?', resposta: qualification.breakdown.lojaFisica.label, pontos: qualification.breakdown.lojaFisica.points, origem: 'Formulário' },
+    { criterio: 'Tempo de CNPJ', resposta: qualification.breakdown.tempoCnpj.label, pontos: qualification.breakdown.tempoCnpj.points, origem: 'API do CNPJ' }
+  ]);
+  console.info('Total:', qualification.score, 'de 100');
+  console.info('Cidade/UF obtidas pela API:', `${data.cidade}/${data.estado}`);
+  console.info('Status:', qualification.disqualified ? 'Desqualificado' : qualification.priority);
+  if (qualification.disqualificationReasons.length) console.info('Motivos:', qualification.disqualificationReasons);
+  console.groupEnd();
+  return qualification;
 }
 
 export function isValidQualificationOption(questionIndex: number, value: string): boolean {
