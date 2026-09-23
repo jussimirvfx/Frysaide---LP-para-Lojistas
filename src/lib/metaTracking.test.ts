@@ -12,11 +12,11 @@ const event = { event_name: 'Lead', event_id: 'test-lead-1', event_source_url: '
   user_data: { em: ['TESTE@example.test'], ph: ['+5511999999999'], fn: ['Pessoa'], ct: ['São Paulo'], client_ip_address: 'SERÁ_PREENCHIDO_PELO_BACKEND' },
   custom_data: { value: 100, lead_score: 100, disqualified: false, currency: 'BRL' } };
 
-test('good, intermediate and bad leads preserve score and choose correct Meta hooks', async () => {
+test('good, intermediate and curated leads preserve score and choose correct Meta hooks', async () => {
   for (const [form, total, expected] of [
     [data, 100, ['Lead', 'LeadQualificado']],
     [{ ...data, tipoLoja: 'opcao-storeType-3-2', tempoCnpj: 'opcao-1790102115667-2' }, 55, ['Lead']],
-    [{ ...data, tipoLoja: 'opcao-storeType-6', lojaFisica: 'no', tempoCnpj: 'opcao-1790102115667-1' }, 17, ['Lead']]
+    [{ ...data, tipoLoja: 'opcao-storeType-6', lojaFisica: 'no', tempoCnpj: 'opcao-1790102115667-1' }, 17, []]
   ] as const) {
     const calls: string[] = [];
     const lead = prepareMetaLead(form);
@@ -35,6 +35,13 @@ test('invalid CNPJ blocks every Meta hook, including incomplete and repeated dig
   for (const cnpj of ['60887522000188', '00000000000000', '60887522', '']) {
     await assert.rejects(trackValidatedLead({ ...data, cnpj }, tracker, tracker), /CNPJ inválido/);
   }
+  assert.equal(calls, 0);
+});
+
+test('lead without a physical store does not call any Meta hook', async () => {
+  let calls = 0;
+  const tracker = async () => { calls++; };
+  await trackValidatedLead({ ...data, lojaFisica: 'no' }, tracker, tracker);
   assert.equal(calls, 0);
 });
 

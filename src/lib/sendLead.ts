@@ -1,5 +1,6 @@
 import type { LeadFormData, LeadSubmissionContext } from '../types';
 import { buildLeadWebhookPayload } from './leadRequest';
+import { isLeadBlockedByCuration } from './leadScoring';
 
 const defaultContext = (): LeadSubmissionContext => ({
   timestamp: new Date().toISOString(),
@@ -38,6 +39,7 @@ export async function sendLead(
   request: typeof fetch = fetch,
   context: LeadSubmissionContext = defaultContext()
 ) {
+  if (isLeadBlockedByCuration(data)) throw new Error('Cadastro não selecionado pela curadoria.');
   const payload = buildLeadWebhookPayload(data, context.timestamp, context.pageUrl, context.userAgent, context.referrer);
 
   await registrarEnvioFormularioNoVercel(payload, { endpoint }, request);

@@ -81,11 +81,12 @@ export function localLeadPreview(): Plugin {
             user_agent?: string;
             referrer?: string;
           };
-          if (isLeadBlockedByCuration(body)) {
+          const normalizedBody = normalizeSubmittedLead(body);
+          if (isLeadBlockedByCuration(normalizedBody)) {
             return respond(response, 422, { error: 'Cadastro não selecionado pela curadoria.' });
           }
           const payload = buildLeadWebhookPayload(
-            normalizeSubmittedLead(body),
+            normalizedBody,
             body.timestamp || new Date().toISOString(),
             body.page_url || '',
             body.user_agent || '',

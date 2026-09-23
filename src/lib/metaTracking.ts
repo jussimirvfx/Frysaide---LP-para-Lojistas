@@ -1,4 +1,5 @@
 import { buildLeadWebhookPayload } from './leadRequest';
+import { isLeadBlockedByCuration } from './leadScoring';
 import type { LeadFormData } from '../types';
 
 export function prepareMetaLead(data: LeadFormData) {
@@ -14,6 +15,7 @@ export type MetaLead = ReturnType<typeof prepareMetaLead>;
 export type LeadTracker = (data: MetaLead) => Promise<unknown>;
 
 export async function trackValidatedLead(data: LeadFormData, trackLead: LeadTracker, trackLeadQualificado: LeadTracker) {
+  if (isLeadBlockedByCuration(data)) return;
   const lead = prepareMetaLead(data);
   for (const track of lead.lead_score >= 70 && !lead.disqualified ? [trackLead, trackLeadQualificado] : [trackLead]) {
     try { await track(lead); }

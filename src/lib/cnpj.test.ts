@@ -110,6 +110,16 @@ test('invalid CNPJ blocks the external lookup request', async () => {
   assert.equal(calls, 0);
 });
 
+test('lead without a physical store never calls backup or webhook', async () => {
+  let calls = 0;
+  const request: typeof fetch = async () => { calls++; throw new Error('Unexpected network call'); };
+  await assert.rejects(
+    sendLead({ ...data, lojaFisica: 'no' }, '/api/leads', request, context),
+    { message: 'Cadastro não selecionado pela curadoria.' }
+  );
+  assert.equal(calls, 0);
+});
+
 test('backup failure is handled before preserving failed-webhook behavior', async () => {
   let calls = 0;
   const request: typeof fetch = async () => {
@@ -159,11 +169,12 @@ test('matches every score and disqualification rule from the approved configurat
   assert.equal(LEAD_SCORE_CONFIG.stateConfig.pointsForPriorityState, 1);
 });
 
-test('curation blocks only Magazine and Revendedor(a) autônomo(a)', () => {
-  assert.equal(isLeadBlockedByCuration({ tipoLoja: 'opcao-storeType-4-2' }), true);
-  assert.equal(isLeadBlockedByCuration({ tipoLoja: 'opcao-storeType-6' }), true);
+test('curation blocks Magazine, Revendedor(a) autônomo(a) and leads without a physical store', () => {
+  assert.equal(isLeadBlockedByCuration({ tipoLoja: 'opcao-storeType-4-2', lojaFisica: 'yes' }), true);
+  assert.equal(isLeadBlockedByCuration({ tipoLoja: 'opcao-storeType-6', lojaFisica: 'yes' }), true);
+  assert.equal(isLeadBlockedByCuration({ tipoLoja: 'opcao-storeType-3', lojaFisica: 'no' }), true);
   for (const tipoLoja of ['opcao-storeType-3', 'opcao-storeType-4', 'opcao-storeType-3-2', 'opcao-storeType-5', '']) {
-    assert.equal(isLeadBlockedByCuration({ tipoLoja }), false, tipoLoja);
+    assert.equal(isLeadBlockedByCuration({ tipoLoja, lojaFisica: 'yes' }), false, tipoLoja);
   }
 });
 
