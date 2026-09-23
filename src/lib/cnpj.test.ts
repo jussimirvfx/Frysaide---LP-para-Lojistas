@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import formLogHandler from '../../api/form-log';
+import cnpjHandler from '../../api/cnpj.js';
 import leadHandler from '../../api/leads.js';
 import { CNPJ_ERROR, cnpjDigits, formatCnpj, getCnpjFieldError, isValidCnpj } from './cnpj';
 import { calcularIdadeCnpj, CNPJ_LOOKUP_ERROR, fetchCnpjEnrichment, normalizeCnpjApiData, tempoCnpjValueFromYears } from './cnpjLookup';
@@ -77,17 +78,78 @@ test('valid submission awaits backup before webhook and reuses the complete payl
 
 test('gets hidden city, state and CNPJ age from a mocked CNPJ API response', async () => {
   let requestedUrl = '';
+  let requestedInit: RequestInit | undefined;
   const request: typeof fetch = async (url, init) => {
     requestedUrl = String(url);
-    assert.equal((init?.headers as Record<string, string>)['User-Agent'], 'Frysaide-LP/1.0');
-    return new Response(JSON.stringify({ municipio: 'São Paulo', uf: 'sp', data_inicio_atividade: '2020-09-23' }));
+    requestedInit = init;
+    return new Response(JSON.stringify({
+      ok: true,
+      cnpj_valido: true,
+      encontrado: true,
+      fonte: 'SINTEGRA',
+      company: {
+        razao_social: 'Empresa Teste',
+        nome_fantasia: 'Loja Teste',
+        data_abertura: '23/09/2020',
+        endereco: { cidade: 'São Paulo', estado: 'sp' }
+      }
+    }));
   };
-  const result = await fetchCnpjEnrichment('60.887.522/0001-89', request, new Date('2026-09-23T12:00:00Z'));
-  assert.equal(requestedUrl, 'https://brasilapi.com.br/api/cnpj/v1/60887522000189');
+  const result = await fetchCnpjEnrichment('60.887.522/0001-89', request, new Date('2026-09-23T12:00:00Z'), { oidcToken: 'oidc-test', landingId: 'frysaide-lojistas' });
+  assert.equal(requestedUrl, 'https://validador-cnpj.vfxaceleradordevendas.com.br/api/v1/cnpj');
+  assert.equal(requestedInit?.method, 'POST');
+  assert.equal((requestedInit?.headers as Record<string, string>).Authorization, 'Bearer oidc-test');
+  assert.equal((requestedInit?.headers as Record<string, string>)['X-VFX-Landing-ID'], 'frysaide-lojistas');
+  assert.deepEqual(JSON.parse(String(requestedInit?.body)), { cnpj: '60887522000189' });
   assert.deepEqual(result, {
     cidade: 'São Paulo', estado: 'SP', dataInicioAtividade: '2020-09-23', idadeCnpjAnos: 6,
-    tempoCnpj: 'opcao-1790102115667-4', fonte: 'BrasilAPI (Minha Receita)'
+    tempoCnpj: 'opcao-1790102115667-4', fonte: 'SINTEGRA', encontrado: true,
+    cnpjValido: true, cnpjValidationStatus: 'cadastral_valid',
+    company: {
+      razao_social: 'Empresa Teste', nome_fantasia: 'Loja Teste', situacao_cadastral: '',
+      data_abertura: '2020-09-23', porte: '', cnae_principal: '', descricao_cnae_principal: '',
+      inscricoes_estaduais: [], inscricao_estadual_status: '', possui_inscricao_estadual: null,
+      endereco: { completo: '', rua: '', numero: '', complemento: '', bairro: '', cidade: 'São Paulo', estado: 'SP', cep: '' }
+    }
   });
+});
+
+test('same-origin CNPJ route forwards only the runtime OIDC token to the central API', async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = '';
+  let requestedInit: RequestInit | undefined;
+  globalThis.fetch = async (url, init) => {
+    requestedUrl = String(url);
+    requestedInit = init;
+    return new Response(JSON.stringify({
+      ok: true, cnpj_valido: true, encontrado: true, fonte: 'SINTEGRA',
+      company: { razao_social: 'Empresa Teste', data_abertura: '23/09/2020', endereco: { cidade: 'São Paulo', estado: 'SP' } }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  let statusCode = 0;
+  let responseBody: unknown;
+  const response = {
+    status(code: number) { statusCode = code; return this; },
+    json(body: unknown) { responseBody = body; },
+    setHeader() { return this; }
+  };
+  try {
+    await cnpjHandler({
+      method: 'GET',
+      url: '/api/cnpj?cnpj=60887522000189',
+      headers: { host: 'localhost', 'x-vercel-oidc-token': 'runtime-oidc', authorization: 'Bearer browser-token' }
+    } as never, response as never);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(statusCode, 200);
+  assert.equal(requestedUrl, 'https://validador-cnpj.vfxaceleradordevendas.com.br/api/v1/cnpj');
+  const headers = requestedInit?.headers as Record<string, string>;
+  assert.equal(headers.Authorization, 'Bearer runtime-oidc');
+  assert.equal(headers['X-VFX-Landing-ID'], 'frysaide-lojistas');
+  assert.equal(JSON.parse(String(requestedInit?.body)).cnpj, '60887522000189');
+  assert.equal(JSON.stringify(headers).includes('browser-token'), false);
+  assert.equal((responseBody as { cnpj_validation_status: string }).cnpj_validation_status, 'cadastral_valid');
 });
 
 test('classifies hidden CNPJ age without gaps and rejects invalid lookup data', () => {
@@ -98,8 +160,8 @@ test('classifies hidden CNPJ age without gaps and rejects invalid lookup data', 
     'opcao-1790102115667-1', 'opcao-1790102115667-2', 'opcao-1790102115667-2',
     'opcao-1790102115667-3', 'opcao-1790102115667-3', 'opcao-1790102115667-4'
   ]);
-  assert.throws(() => normalizeCnpjApiData({ municipio: '', uf: 'SP', data_inicio_atividade: '2020-01-01' }, today), { message: CNPJ_LOOKUP_ERROR });
-  assert.throws(() => normalizeCnpjApiData({ municipio: 'São Paulo', uf: 'SP', data_inicio_atividade: '2099-01-01' }, today), { message: CNPJ_LOOKUP_ERROR });
+  assert.throws(() => normalizeCnpjApiData({ ok: true, cnpj_valido: true, encontrado: true, company: { razao_social: '', endereco: { estado: 'SP' }, data_abertura: '2020-01-01' } }, today), { message: CNPJ_LOOKUP_ERROR });
+  assert.throws(() => normalizeCnpjApiData({ ok: true, cnpj_valido: true, encontrado: true, company: { razao_social: 'Empresa', endereco: { cidade: 'São Paulo', estado: 'SP' }, data_abertura: '2099-01-01' } }, today), { message: CNPJ_LOOKUP_ERROR });
 });
 
 test('invalid CNPJ blocks the external lookup request', async () => {
@@ -226,7 +288,7 @@ test('allows checksum-valid leads when optional CNPJ enrichment is unavailable',
   assert.equal(payload.tempoCnpj, '');
 });
 
-test('lead endpoint delivers a checksum-valid lead when BrasilAPI is unavailable', async () => {
+test('lead endpoint delivers a checksum-valid lead when the central CNPJ API is unavailable', async () => {
   const originalFetch = globalThis.fetch;
   const originalWebhook = process.env.N8N_FRYSAIDE_WEBHOOK_URL;
   const originalWarn = console.warn;
@@ -235,7 +297,7 @@ test('lead endpoint delivers a checksum-valid lead when BrasilAPI is unavailable
   let responseBody: unknown;
   process.env.N8N_FRYSAIDE_WEBHOOK_URL = 'https://n8n.example.test/webhook';
   globalThis.fetch = async (url, init) => {
-    if (String(url).startsWith('https://brasilapi.com.br/')) return new Response('unavailable', { status: 503 });
+    if (String(url).startsWith('https://validador-cnpj.vfxaceleradordevendas.com.br/')) return new Response('unavailable', { status: 503 });
     webhookPayload = JSON.parse(String(init?.body)) as Record<string, unknown>;
     return new Response('{}', { status: 200 });
   };

@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { LeadFormData } from '../src/types.js';
-import { fetchCnpjEnrichment } from '../src/lib/cnpjLookup.js';
+import { fetchCnpjEnrichment, FRYSAIDE_CNPJ_LANDING_ID } from '../src/lib/cnpjLookup.js';
 import { buildLeadWebhookPayload, normalizeSubmittedLead } from '../src/lib/leadRequest.js';
 import { isLeadBlockedByCuration } from '../src/lib/leadScoring.js';
 
@@ -37,7 +37,13 @@ export default async function handler(request: VercelRequest, response: VercelRe
     if (!submittedFormData) throw new Error('Payload inválido.');
     let cnpjData: Awaited<ReturnType<typeof fetchCnpjEnrichment>> | null = null;
     try {
-      cnpjData = await fetchCnpjEnrichment(submittedFormData.cnpj);
+      const oidcToken = String(request.headers['x-vercel-oidc-token'] || '').split(',')[0].trim();
+      const clientIp = String(request.headers['x-forwarded-for'] || '').split(',')[0].trim();
+      cnpjData = await fetchCnpjEnrichment(submittedFormData.cnpj, fetch, new Date(), {
+        oidcToken,
+        landingId: FRYSAIDE_CNPJ_LANDING_ID,
+        clientIp
+      });
     } catch {
       // Cadastral enrichment is optional. A valid checksum must still reach n8n.
       console.warn('CNPJ_ENRICHMENT_OPTIONAL_FAILED');
@@ -55,7 +61,8 @@ export default async function handler(request: VercelRequest, response: VercelRe
       body?.timestamp || new Date().toISOString(),
       sourceUrl,
       body?.user_agent || String(request.headers['user-agent'] || ''),
-      body?.referrer || 'direct'
+      body?.referrer || 'direct',
+      cnpjData
     );
     const webhookToken = process.env.N8N_FRYSAIDE_WEBHOOK_TOKEN;
     const webhookResponse = await fetch(webhookUrl, {
@@ -75,7 +82,10 @@ export default async function handler(request: VercelRequest, response: VercelRe
       ...(cnpjData ? { enrichment: {
         cidade: cnpjData.cidade,
         estado: cnpjData.estado,
-        tempoCnpj: cnpjData.tempoCnpj
+        tempoCnpj: cnpjData.tempoCnpj,
+        fonte: cnpjData.fonte,
+        encontrado: cnpjData.encontrado,
+        cnpj_validation_status: cnpjData.cnpjValidationStatus
       } } : {}),
       lead_score_summary: {
         lead_score: payload.lead_score,

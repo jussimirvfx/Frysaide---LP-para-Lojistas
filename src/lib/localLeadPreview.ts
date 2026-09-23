@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import type { LeadFormData } from '../types';
-import { fetchCnpjEnrichment } from './cnpjLookup';
+import { fetchCnpjEnrichment, FRYSAIDE_CNPJ_LANDING_ID } from './cnpjLookup';
 import { buildLeadWebhookPayload, normalizeSubmittedLead } from './leadRequest';
 import { isLeadBlockedByCuration } from './leadScoring';
 import { buildFormLogEntry, leadScoreSummary } from './formLog';
@@ -33,7 +33,12 @@ export function localLeadPreview(): Plugin {
         if (request.method !== 'GET') return respond(response, 405, { error: 'Método não permitido.' });
         try {
           const url = new URL(request.url || '', 'http://localhost');
-          const result = await fetchCnpjEnrichment(url.searchParams.get('cnpj') || '');
+          const result = await fetchCnpjEnrichment(url.searchParams.get('cnpj') || '', fetch, new Date(), {
+            // Local preview may use an explicitly configured server-only token;
+            // browser code never receives this value.
+            oidcToken: process.env.VFX_CNPJ_API_TOKEN || process.env.VERCEL_OIDC_TOKEN,
+            landingId: FRYSAIDE_CNPJ_LANDING_ID
+          });
           respond(response, 200, {
             municipio: result.cidade,
             uf: result.estado,

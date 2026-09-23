@@ -1,4 +1,5 @@
 import type { LeadFormData } from '../types.js';
+import type { CnpjEnrichment } from './cnpjLookup.js';
 import { CNPJ_ERROR, cnpjDigits, formatCnpj, isValidCnpj } from './cnpj.js';
 import { calculateLeadQualification, converterParaE164, formatTelefone, isValidQualificationOption, qualificationOptionFor, validarEmail, validarTelefoneCompleto } from './leadScoring.js';
 
@@ -18,7 +19,8 @@ export function buildLeadWebhookPayload(
   timestamp: string,
   pageUrl: string,
   userAgent = '',
-  referrer = 'direct'
+  referrer = 'direct',
+  cnpjEnrichment?: CnpjEnrichment | null
 ) {
   if (!input || !isValidCnpj(input.cnpj || '')) throw new Error(CNPJ_ERROR);
 
@@ -53,7 +55,12 @@ export function buildLeadWebhookPayload(
     tempoCnpj_value: input.tempoCnpj,
     cnpj: formatCnpj(input.cnpj),
     cnpj_digits: cnpjDigits(input.cnpj),
-    cnpj_validation_status: 'checksum_valid' as const,
+    cnpj_validation_status: cnpjEnrichment ? cnpjEnrichment.cnpjValidationStatus : 'checksum_valid' as const,
+    ...(cnpjEnrichment ? {
+      encontrado: cnpjEnrichment.encontrado,
+      fonte_cnpj: cnpjEnrichment.fonte,
+      cnpj_company: cnpjEnrichment.company
+    } : {}),
     name: input.nome.trim(),
     phone: converterParaE164(input.telefone),
     city: input.cidade.trim(),
