@@ -3,6 +3,7 @@ import type { Plugin } from 'vite';
 import type { LeadFormData } from '../types';
 import { fetchCnpjEnrichment } from './cnpjLookup';
 import { buildLeadWebhookPayload, normalizeSubmittedLead } from './leadRequest';
+import { isLeadBlockedByCuration } from './leadScoring';
 import { buildFormLogEntry, leadScoreSummary } from './formLog';
 import { handleMetaConversion } from './metaConversions';
 
@@ -80,6 +81,9 @@ export function localLeadPreview(): Plugin {
             user_agent?: string;
             referrer?: string;
           };
+          if (isLeadBlockedByCuration(body)) {
+            return respond(response, 422, { error: 'Cadastro não selecionado pela curadoria.' });
+          }
           const payload = buildLeadWebhookPayload(
             normalizeSubmittedLead(body),
             body.timestamp || new Date().toISOString(),

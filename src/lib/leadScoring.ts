@@ -77,6 +77,10 @@ export function converterParaE164(value: string): string {
 
 export const qualificationOptionFor = (questionIndex: number, value: string) => LEAD_SCORE_CONFIG.questions[questionIndex].options.find(option => option.value === value);
 
+export function isLeadBlockedByCuration(data: Pick<LeadFormData, 'tipoLoja'>): boolean {
+  return data.tipoLoja === 'opcao-storeType-4-2' || data.tipoLoja === 'opcao-storeType-6';
+}
+
 export function calculateLeadQualification(data: LeadFormData) {
   const storeType = qualificationOptionFor(0, data.tipoLoja);
   const physicalStore = qualificationOptionFor(1, data.lojaFisica);

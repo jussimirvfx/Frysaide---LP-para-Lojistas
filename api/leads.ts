@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { LeadFormData } from '../src/types.js';
 import { fetchCnpjEnrichment } from '../src/lib/cnpjLookup.js';
 import { buildLeadWebhookPayload, normalizeSubmittedLead } from '../src/lib/leadRequest.js';
+import { isLeadBlockedByCuration } from '../src/lib/leadScoring.js';
 
 type VercelRequest = IncomingMessage & { body?: LeadFormData & {
   timestamp?: string;
@@ -30,6 +31,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const body = request.body as VercelRequest['body'];
     const sourceUrl = String(body?.page_url || request.headers.referer || request.headers.origin || '');
     const submittedFormData = body ? normalizeSubmittedLead(body) : body;
+    if (submittedFormData && isLeadBlockedByCuration(submittedFormData)) {
+      return response.status(422).json({ error: 'Cadastro não selecionado pela curadoria.' });
+    }
     const cnpjData = await fetchCnpjEnrichment(submittedFormData?.cnpj || '');
     const formData = submittedFormData ? {
       ...submittedFormData,

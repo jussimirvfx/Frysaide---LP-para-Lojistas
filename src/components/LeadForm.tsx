@@ -1,8 +1,9 @@
 import { useState, type ChangeEvent, type FocusEvent, type FormEvent } from 'react';
+import { CheckCircle2, XCircle } from 'lucide-react';
 import { CNPJ_ERROR, cnpjDigits, formatCnpj, getCnpjFieldError, isValidCnpj } from '../lib/cnpj';
 import { CNPJ_LOOKUP_ERROR, consultarCnpj } from '../lib/cnpjLookup';
 import { LOJA_FISICA_OPTIONS, TIPO_LOJA_OPTIONS } from '../lib/formOptions';
-import { formatTelefone, logLeadScoreNoConsole, validarEmail, validarTelefoneCompleto } from '../lib/leadScoring';
+import { formatTelefone, isLeadBlockedByCuration, logLeadScoreNoConsole, validarEmail, validarTelefoneCompleto } from '../lib/leadScoring';
 import { sendLead } from '../lib/sendLead';
 import type { LeadFormData } from '../types';
 import { useMetaPixel } from 'scoretrack';
@@ -26,7 +27,7 @@ const qualificationFields: { name: keyof LeadFormData; label: string; options: r
 export const LeadForm = () => {
   const { trackLead, trackLeadQualificado } = useMetaPixel();
   const [formData, setFormData] = useState(initialFormData);
-  const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error' | 'disqualified'>('idle');
   const [error, setError] = useState('');
   const [cnpjError, setCnpjError] = useState('');
   const [telefoneError, setTelefoneError] = useState('');
@@ -71,6 +72,11 @@ export const LeadForm = () => {
     setCnpjError('');
     setTelefoneError('');
     setEmailError('');
+    if (isLeadBlockedByCuration(formData)) {
+      setError('');
+      setStatus('disqualified');
+      return;
+    }
     setStatus('sending');
     setError('');
     try {
@@ -104,9 +110,17 @@ export const LeadForm = () => {
         </div>
         {status === 'success' ? (
           <div id="form-success-message" role="status" className="py-8 text-center">
+            <CheckCircle2 aria-hidden="true" className="mx-auto mb-5 size-14 text-green-600" strokeWidth={1.75} />
             <h3 className="text-2xl mb-4">Solicitação recebida com sucesso.</h3>
             <p className="text-neutral-700 mb-6">Obrigado pelo interesse. Nossa equipe entrará em contato em breve.</p>
             <button id="form-reset-btn" type="button" onClick={() => { setFormData(initialFormData); setStatus('idle'); setCnpjError(''); setTelefoneError(''); setEmailError(''); }} className="underline underline-offset-4">Enviar outra solicitação</button>
+          </div>
+        ) : status === 'disqualified' ? (
+          <div id="lead-curation-message" role="alert" className="py-8 text-center">
+            <XCircle aria-hidden="true" className="mx-auto mb-5 size-14 text-red-600" strokeWidth={1.75} />
+            <p className="text-neutral-800">Infelizmente, informamos que o seu cadastro não foi selecionado para avançarmos neste momento.</p>
+            <p className="mt-5 text-neutral-800">Como nosso processo de entrada passa por uma curadoria interna, não conseguiremos seguir com a parceria agora.</p>
+            <p className="mt-5 text-neutral-800">Agradecemos o seu interesse na nossa marca e desejamos muito sucesso!</p>
           </div>
         ) : (
           <form id="lead-capture-form" onSubmit={handleSubmit} aria-labelledby="form-title" className="bg-transparent">

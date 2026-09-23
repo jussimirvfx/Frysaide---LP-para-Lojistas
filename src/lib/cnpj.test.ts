@@ -6,7 +6,7 @@ import { calcularIdadeCnpj, CNPJ_LOOKUP_ERROR, fetchCnpjEnrichment, normalizeCnp
 import { buildFormLogEntry, leadScoreSummary } from './formLog';
 import { LOJA_FISICA_OPTIONS, TEMPO_CNPJ_OPTIONS, TIPO_LOJA_OPTIONS } from './formOptions';
 import { buildLeadWebhookPayload } from './leadRequest';
-import { calculateLeadQualification, converterParaE164, formatTelefone, LEAD_SCORE_CONFIG, validarEmail, validarTelefoneCompleto } from './leadScoring';
+import { calculateLeadQualification, converterParaE164, formatTelefone, isLeadBlockedByCuration, LEAD_SCORE_CONFIG, validarEmail, validarTelefoneCompleto } from './leadScoring';
 import { sendLead } from './sendLead';
 import type { LeadFormData, LeadSubmissionContext } from '../types';
 
@@ -157,6 +157,14 @@ test('matches every score and disqualification rule from the approved configurat
   ]);
   assert.equal(LEAD_SCORE_CONFIG.stateConfig.priorityStates.length, 27);
   assert.equal(LEAD_SCORE_CONFIG.stateConfig.pointsForPriorityState, 1);
+});
+
+test('curation blocks only Magazine and Revendedor(a) autônomo(a)', () => {
+  assert.equal(isLeadBlockedByCuration({ tipoLoja: 'opcao-storeType-4-2' }), true);
+  assert.equal(isLeadBlockedByCuration({ tipoLoja: 'opcao-storeType-6' }), true);
+  for (const tipoLoja of ['opcao-storeType-3', 'opcao-storeType-4', 'opcao-storeType-3-2', 'opcao-storeType-5', '']) {
+    assert.equal(isLeadBlockedByCuration({ tipoLoja }), false, tipoLoja);
+  }
 });
 
 test('scores and disqualifies leads from the configured option values', () => {
